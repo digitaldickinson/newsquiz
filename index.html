@@ -110,10 +110,9 @@
 
         async function generateQuizData() {
             const currentDate = setQuizDate();
-            
-            // The API key is GONE from here. This is the secure part.
-            // This URL now points to our own secure backend function.
-            const apiUrl = `netlify/functions/generate-quiz.js`;
+            const apiUrl = `/.netlify/functions/generate-quiz`;
+            const maxRetries = 3;
+            let attempt = 0;
 
             const prompt = `Generate a JSON array of 20 quiz questions for a UK-based journalist.
             Each question object in the array must have the following properties: "id", "question", "options" (an array of 4 strings), "answer", "explanation", and "source" (an object with "text" and "url").
@@ -122,38 +121,54 @@
             - UK national news
             - International news
             - Sports news
-            - News specific to the North West of England with an emphasis on Manchester and Greater Manchester
+            - News specific to the North West of England (Manchester, Liverpool, etc.)
             All news must be very recent, from today (${currentDate}) and the previous two days.
             Ensure the source URL is a valid link to a reputable news article covering the topic.`;
-            
-            try {
-                // We now send the prompt in the body of the request to our secure function.
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || `Request failed with status ${response.status}`);
-                }
-                
-                const result = await response.json();
-                
-                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
-                    const jsonText = result.candidates[0].content.parts[0].text;
-                    quizData = JSON.parse(jsonText);
-                    buildQuiz();
-                } else {
-                    throw new Error('Invalid response structure from API.');
-                }
 
-            } catch (error) {
-                quizContainer.innerHTML = `<p class="text-red-500 text-center">Failed to generate today's quiz. This might be a temporary issue. Please try refreshing the page.</p>`;
-                console.error('Error generating quiz data:', error);
-                loader.style.display = 'none';
-                loaderText.style.display = 'none';
+            while (attempt < maxRetries) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: prompt })
+                    });
+                    
+                    if (!response.ok) {
+                        let errorText = `Server responded with status ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorText = errorData.error || JSON.stringify(errorData);
+                        } catch (e) {
+                            errorText = await response.text();
+                        }
+                        throw new Error(errorText);
+                    }
+                    
+                    const result = await response.json();
+                    
+                    if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
+                        const jsonText = result.candidates[0].content.parts[0].text;
+                        quizData = JSON.parse(jsonText);
+                        buildQuiz();
+                        return; // Success, so we exit the function.
+                    } else {
+                        throw new Error('Invalid response structure from API.');
+                    }
+
+                } catch (error) {
+                    attempt++;
+                    console.error(`Attempt ${attempt} of ${maxRetries} failed:`, error.message);
+                    if (attempt >= maxRetries) {
+                        quizContainer.innerHTML = `<p class="text-red-500 text-center">Sorry, we couldn't generate today's quiz after several attempts. This might be a temporary issue. Please try refreshing the page in a few moments.</p>`;
+                        console.error('Final error generating quiz data:', error);
+                        loader.style.display = 'none';
+                        loaderText.style.display = 'none';
+                        return;
+                    }
+                    const delay = Math.pow(2, attempt) * 1000; // 2s, 4s
+                    loaderText.textContent = `Attempt ${attempt + 1} of ${maxRetries}... Retrying in ${delay / 1000}s.`;
+                    await new Promise(res => setTimeout(res, delay));
+                }
             }
         }
 
