@@ -113,7 +113,7 @@
             
             // The API key is GONE from here. This is the secure part.
             // This URL now points to our own secure backend function.
-            const apiUrl = `/netlify/functions/generate-quiz`;
+            const apiUrl = `/netlify/functions/generate-quiz.js`;
 
             const prompt = `Generate a JSON array of 20 quiz questions for a UK-based journalist.
             Each question object in the array must have the following properties: "id", "question", "options" (an array of 4 strings), "answer", "explanation", and "source" (an object with "text" and "url").
