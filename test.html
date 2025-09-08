@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>News Quiz Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h1>News Quiz Generator</h1>
+  
+  <form id="quiz-form">
+    <label for="prompt-input">Enter Quiz Topic or Prompt:</label><br />
+    <input type="text" id="prompt-input" name="prompt" required />
+    <button type="submit">Generate Quiz</button>
+  </form>
+  
+  <div id="quiz-result"></div>
+
+  <script>
+    document.getElementById('quiz-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const prompt = document.getElementById('prompt-input').value.trim();
+      const resultDiv = document.getElementById('quiz-result');
+      resultDiv.textContent = 'Generating quiz...';
+
+      if (!prompt) {
+        resultDiv.textContent = 'Please enter a valid prompt.';
+        return;
+      }
+
+      try {
+        const response = await fetch('/.netlify/functions/generate-quiz', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: prompt })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          resultDiv.textContent = data.error || 'Error generating quiz.';
+          return;
+        }
+
+        // Assuming data is an array of quiz questions
+        let html = '<h2>Quiz Questions</h2><ol>';
+        data.forEach(item => {
+          html += `<li>
+                     <strong>Question:</strong> ${item.question}<br />
+                     <strong>Options:</strong>
+                     <ul>${item.options.map(opt => `<li>${opt}</li>`).join('')}</ul>
+                     <strong>Answer:</strong> ${item.answer}<br />
+                     <strong>Explanation:</strong> ${item.explanation}<br />
+                     <strong>Source:</strong> <a href="${item.source.url}" target="_blank" rel="noopener">${item.source.text}</a>
+                   </li>`;
+        });
+        html += '</ol>';
+        resultDiv.innerHTML = html;
+
+      } catch (error) {
+        resultDiv.textContent = 'Unexpected error occurred. Try again later.';
+      }
+    });
+  </script>
+</body>
+</html>
