@@ -1,20 +1,22 @@
 /**
- * This is a Netlify Serverless Function that acts as a secure proxy.
- * Its purpose is to securely call the Google Gemini API without exposing your API key.
+ * This is a secure Netlify serverless function that acts as a proxy to the Google Gemini API.
+ * It keeps the API key hidden from the public front-end.
  *
  * How it works:
- * 1. The front-end HTML page calls this function's URL.
- * 2. This function runs on Netlify's servers.
- * 3. It retrieves the secret API key from Netlify's environment variables.
- * 4. It makes the actual call to the Google Gemini API.
- * 5. It sends the result back to the front-end page.
+ * 1. It receives a 'POST' request from the front-end containing the prompt.
+ * 2. It retrieves the secret GEMINI_API_KEY from Netlify's environment variables.
+ * 3. It makes a secure, server-to-server call to the Gemini API.
+ * 4. It includes detailed logging to help debug issues via the Netlify function logs.
+ * 5. It returns the API's response directly to the front-end.
  */
 
-// The 'handler' function is the required entry point for any Netlify Function.
 exports.handler = async function(event, context) {
-    // --- Security Check ---
-    // For security, we only want to allow POST requests to this function.
+    // Log the incoming request to see if the function is being triggered
+    console.log("Function invoked. Request received from:", event.headers['x-forwarded-for']);
+
+    // --- Security Check: Only allow POST requests ---
     if (event.httpMethod !== 'POST') {
+        console.error("Error: Received a non-POST request.");
         return {
             statusCode: 405, // 405 Method Not Allowed
             body: JSON.stringify({ error: 'This function only accepts POST requests.' }),
@@ -22,88 +24,76 @@ exports.handler = async function(event, context) {
         };
     }
 
-    // --- API Key Retrieval ---
-    // This securely retrieves the API key you've stored in your Netlify site settings.
-    // It is NEVER visible to the public or in the front-end code.
+    // --- Retrieve the secret API key ---
     const apiKey = process.env.GEMINI_API_KEY;
-
-    // If the API key hasn't been set in Netlify, return an error.
     if (!apiKey) {
-        console.error("GEMINI_API_KEY environment variable not set.");
+        console.error("FATAL ERROR: GEMINI_API_KEY is not set in Netlify environment variables.");
         return {
             statusCode: 500,
-            body: JSON.stringify({ error: "Server configuration error: API key is missing." })
+            body: JSON.stringify({ error: 'Server configuration error: API key is missing.' })
+        };
+    }
+    console.log("Successfully retrieved API key.");
+
+    // --- Parse the prompt from the incoming request body ---
+    let prompt;
+    try {
+        const body = JSON.parse(event.body);
+        prompt = body.prompt;
+        if (!prompt) {
+            throw new Error("'prompt' field is missing from the request body.");
+        }
+        console.log("Successfully parsed prompt from request body.");
+    } catch (error) {
+        console.error("Error parsing request body:", error.message);
+        return {
+            statusCode: 400, // 400 Bad Request
+            body: JSON.stringify({ error: `Invalid request body: ${error.message}` })
         };
     }
 
-    // --- API Request Preparation ---
+    // --- Prepare the payload for the Gemini API ---
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-    try {
-        // The front-end page sends its 'prompt' inside the request's body.
-        const { prompt } = JSON.parse(event.body);
-
-        if (!prompt) {
-            return { statusCode: 400, body: JSON.stringify({ error: "Bad Request: No prompt was provided." }) };
+    const payload = {
+        contents: [{
+            parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+            responseMimeType: "application/json",
         }
+    };
 
-        // This is the payload we will send to the Google Gemini API.
-        const payload = {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: "ARRAY",
-                    items: {
-                        type: "OBJECT",
-                        properties: {
-                            "id": { "type": "NUMBER" },
-                            "question": { "type": "STRING" },
-                            "options": { "type": "ARRAY", "items": { "type": "STRING" } },
-                            "answer": { "type": "STRING" },
-                            "explanation": { "type": "STRING" },
-                            "source": {
-                                "type": "OBJECT",
-                                "properties": { "text": { "type": "STRING" }, "url": { "type": "STRING" } }
-                            }
-                        },
-                        required: ["id", "question", "options", "answer", "explanation", "source"]
-                    }
-                }
-            }
-        };
+    console.log("Sending request to Gemini API...");
 
-        // --- Execute API Call ---
-        const apiResponse = await fetch(apiUrl, {
+    // --- Make the secure call to the Gemini API ---
+    try {
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
-        // If the API call itself fails, return an error.
-        if (!apiResponse.ok) {
-            const errorBody = await apiResponse.text();
-            console.error("Google Gemini API Error:", errorBody);
-            return { statusCode: apiResponse.status, body: JSON.stringify({ error: `Failed to fetch from Gemini API. ${errorBody}` }) };
+        const result = await response.json();
+
+        // Check for errors in the Gemini API response itself
+        if (!response.ok || result.error) {
+            console.error("Error response from Gemini API:", JSON.stringify(result, null, 2));
+            throw new Error(result.error ? result.error.message : `API returned status ${response.status}`);
         }
         
-        const data = await apiResponse.json();
+        console.log("Successfully received response from Gemini API.");
 
-        // --- Success Response ---
-        // Send the successful response from Google back to the front-end page.
+        // --- Send the successful response back to the front-end ---
         return {
             statusCode: 200,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data)
+            body: JSON.stringify(result)
         };
 
     } catch (error) {
-        // --- Catch-All Error Handling ---
-        // This catches any other errors, like if the request body is malformed.
-        console.error("An unexpected error occurred in the function:", error);
-        return { 
-            statusCode: 500, 
-            body: JSON.stringify({ error: 'An internal server error occurred.' }) 
+        console.error("An error occurred while calling the Gemini API:", error.message);
+        return {
+            statusCode: 502, // 502 Bad Gateway
+            body: JSON.stringify({ error: `Failed to fetch data from the generation service: ${error.message}` })
         };
     }
 };
