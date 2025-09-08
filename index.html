@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UK & NW Current Affairs Quiz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .correct {
+            border-color: #10b981;
+            background-color: #d1fae5;
+        }
+        .incorrect {
+            border-color: #ef4444;
+            background-color: #fee2e2;
+        }
+        .explanation-correct {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background-color: #f0fdf4;
+            border-left: 4px solid #10b981;
+            font-size: 0.9rem;
+            color: #14532d;
+        }
+        .explanation-incorrect {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background-color: #fef2f2;
+            border-left: 4px solid #ef4444;
+            font-size: 0.9rem;
+            color: #991b1b;
+        }
+        label.correct-answer-indicator {
+            border: 2px solid #10b981;
+            background-color: #f0fdf4;
+        }
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 8px solid #3498db;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+            margin: 40px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4 md:p-8 w-full">
+        <h1 id="quiz-title" class="text-3xl font-bold text-center mb-4 text-gray-800">UK & North West Current Affairs Quiz</h1>
+        <p class="text-center text-gray-600 mb-8">Test your knowledge of the latest national and regional news.</p>
+
+        <div id="quiz-container">
+            <div id="loader" class="loader"></div>
+            <p id="loader-text" class="text-center text-gray-600">Generating today's quiz questions...</p>
+        </div>
+
+        <div id="button-container" class="text-center mt-8 hidden">
+            <button id="submit-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Submit Answers
+            </button>
+        </div>
+
+        <div id="results-container" class="mt-8 text-center"></div>
+    </div>
+
+    <script>
+        let quizData = [];
+        const quizContainer = document.getElementById('quiz-container');
+        const submitBtn = document.getElementById('submit-btn');
+        const resultsContainer = document.getElementById('results-container');
+        const buttonContainer = document.getElementById('button-container');
+        const loader = document.getElementById('loader');
+        const loaderText = document.getElementById('loader-text');
+
+        function setQuizDate() {
+            const today = new Date();
+            const weekday = today.toLocaleDateString('en-GB', { weekday: 'long' });
+            const month = today.toLocaleDateString('en-GB', { month: 'long' });
+            const day = today.getDate();
+
+            function getDayWithSuffix(d) {
+                if (d > 3 && d < 21) return d + 'th';
+                switch (d % 10) {
+                    case 1:  return d + "st";
+                    case 2:  return d + "nd";
+                    case 3:  return d + "rd";
+                    default: return d + "th";
+                }
+            }
+
+            const formattedDate = `${weekday} ${getDayWithSuffix(day)} ${month}`;
+            const pageTitle = `Current Affairs Quiz for ${formattedDate}`;
+            
+            document.title = pageTitle;
+            const quizTitleElement = document.getElementById('quiz-title');
+            if (quizTitleElement) {
+                quizTitleElement.textContent = pageTitle;
+            }
+            return formattedDate;
+        }
+
+        async function generateQuizData() {
+            const currentDate = setQuizDate();
+            
+            // The API key is GONE from here. This is the secure part.
+            // This URL now points to our own secure backend function.
+            const apiUrl = `/netlify/functions/generate-quiz`;
+
+            const prompt = `Generate a JSON array of 20 quiz questions for a UK-based journalist.
+            Each question object in the array must have the following properties: "id", "question", "options" (an array of 4 strings), "answer", "explanation", and "source" (an object with "text" and "url").
+            The "answer" must be one of the strings from the "options" array.
+            The questions should be a mix of:
+            - UK national news
+            - International news
+            - Sports news
+            - News specific to the North West of England with an emphasis on Manchester and Greater Manchester
+            All news must be very recent, from today (${currentDate}) and the previous two days.
+            Ensure the source URL is a valid link to a reputable news article covering the topic.`;
+            
+            try {
+                // We now send the prompt in the body of the request to our secure function.
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Request failed with status ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts[0].text) {
+                    const jsonText = result.candidates[0].content.parts[0].text;
+                    quizData = JSON.parse(jsonText);
+                    buildQuiz();
+                } else {
+                    throw new Error('Invalid response structure from API.');
+                }
+
+            } catch (error) {
+                quizContainer.innerHTML = `<p class="text-red-500 text-center">Failed to generate today's quiz. This might be a temporary issue. Please try refreshing the page.</p>`;
+                console.error('Error generating quiz data:', error);
+                loader.style.display = 'none';
+                loaderText.style.display = 'none';
+            }
+        }
+
+
+        function buildQuiz() {
+            loader.style.display = 'none';
+            loaderText.style.display = 'none';
+            quizContainer.innerHTML = ''; // Clear loader
+            buttonContainer.classList.remove('hidden');
+
+            quizData.sort(() => Math.random() - 0.5); // Shuffle questions
+
+            quizData.forEach((item, index) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.classList.add('bg-white', 'p-6', 'rounded-lg', 'shadow-md', 'mb-4', 'border-2', 'border-transparent');
+                questionDiv.id = `question-card-${item.id}`;
+
+                const questionText = document.createElement('p');
+                questionText.classList.add('text-lg', 'font-semibold', 'mb-4', 'text-gray-700');
+                questionText.textContent = `${index + 1}. ${item.question}`;
+                questionDiv.appendChild(questionText);
+
+                const optionsDiv = document.createElement('div');
+                optionsDiv.classList.add('grid', 'grid-cols-1', 'sm:grid-cols-2', 'gap-4');
+                
+                const shuffledOptions = [...item.options].sort(() => Math.random() - 0.5);
+
+                shuffledOptions.forEach(option => {
+                    const label = document.createElement('label');
+                    label.classList.add('flex', 'items-center', 'p-3', 'rounded-lg', 'border', 'border-gray-300', 'cursor-pointer', 'hover:bg-gray-100', 'transition-all');
+                    
+                    const radio = document.createElement('input');
+                    radio.type = 'radio';
+                    radio.name = `question${item.id}`;
+                    radio.value = option;
+                    radio.classList.add('mr-3', 'form-radio', 'h-5', 'w-5', 'text-blue-600', 'focus:ring-blue-500');
+
+                    label.appendChild(radio);
+                    label.append(option);
+                    optionsDiv.appendChild(label);
+                });
+
+                questionDiv.appendChild(optionsDiv);
+                quizContainer.appendChild(questionDiv);
+            });
+        }
+
+        function showResults() {
+            let numCorrect = 0;
+            let allAnswered = true;
+
+            quizData.forEach(item => {
+                const selector = `input[name=question${item.id}]:checked`;
+                if (!quizContainer.querySelector(selector)) {
+                    allAnswered = false;
+                }
+            });
+
+            if (!allAnswered) {
+                resultsContainer.innerHTML = `<h2 class="text-2xl font-bold text-center text-red-600 mb-2">Please answer all questions before submitting.</h2>`;
+                return;
+            }
+            resultsContainer.innerHTML = '';
+
+            quizData.forEach(item => {
+                const questionCard = document.getElementById(`question-card-${item.id}`);
+                const optionsContainer = questionCard.querySelector('.grid');
+                const userAnswer = quizContainer.querySelector(`input[name=question${item.id}]:checked`).value;
+                const correctAnswer = item.answer;
+
+                optionsContainer.querySelectorAll('input[type="radio"]').forEach(radio => {
+                    radio.disabled = true;
+                    radio.parentElement.classList.remove('hover:bg-gray-100');
+                    radio.parentElement.classList.add('cursor-not-allowed');
+                });
+
+                const explanationDiv = document.createElement('div');
+                let explanationHTML = `<strong>Answer:</strong> ${item.explanation}`;
+                if (item.source && item.source.url && item.source.text) {
+                    explanationHTML += `<br><a href="${item.source.url}" target="_blank" class="text-blue-600 hover:underline mt-2 inline-block">Read more: ${item.source.text}</a>`;
+                }
+                explanationDiv.innerHTML = explanationHTML;
+
+                if (userAnswer === correctAnswer) {
+                    numCorrect++;
+                    questionCard.classList.add('correct');
+                    explanationDiv.classList.add('explanation-correct');
+                } else {
+                    questionCard.classList.add('incorrect');
+                    explanationDiv.classList.add('explanation-incorrect');
+                    
+                    const correctOption = optionsContainer.querySelector(`input[value="${correctAnswer}"]`);
+                    if(correctOption) {
+                        correctOption.parentElement.classList.add('correct-answer-indicator');
+                    }
+                }
+                questionCard.appendChild(explanationDiv);
+            });
+
+            resultsContainer.innerHTML = `<h2 class="text-2xl font-bold text-center text-gray-800">You got ${numCorrect} out of ${quizData.length} correct!</h2>`;
+            submitBtn.style.display = 'none';
+
+            const tryAgainBtn = document.createElement('button');
+            tryAgainBtn.textContent = 'Try Again';
+            tryAgainBtn.classList.add('bg-gray-600', 'hover:bg-gray-700', 'text-white', 'font-bold', 'py-3', 'px-6', 'rounded-lg', 'shadow-md', 'transition-transform', 'transform', 'hover:scale-105');
+            tryAgainBtn.onclick = () => window.location.reload();
+            buttonContainer.appendChild(tryAgainBtn);
+        }
+
+        document.addEventListener('DOMContentLoaded', generateQuizData);
+        submitBtn.addEventListener('click', showResults);
+    </script>
+</body>
+</html>
+
