@@ -15,7 +15,9 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
             display: flex; align-items: center; justify-content: center; z-index: 9999;
+            transition: opacity 0.5s ease-out;
         }
+        .loading-screen.hidden { opacity: 0; pointer-events: none; }
         .loading-content { text-align: center; color: white; max-width: 400px; padding: 2rem; }
         .loading-spinner {
             width: 60px; height: 60px; border: 4px solid rgba(255, 255, 255, 0.3);
@@ -23,69 +25,220 @@
             animation: spin 1s linear infinite; margin: 0 auto 2rem;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .quiz-container { min-height: 100vh; background: #f8fafc; }
+        
+        .quiz-container { min-height: 100vh; background-color: #f8fafc; }
         .quiz-header {
             background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
-            color: white; padding: 2rem 0; text-align: center;
+            color: white; padding: 2rem 1rem; text-align: center;
         }
         .container { max-width: 800px; margin: 0 auto; padding: 0 1rem; }
-        .question-container {
-            background: white; margin: 2rem auto; padding: 2rem; border-radius: 12px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); max-width: 800px;
+        
+        .question-card {
+            background: white; margin: 2rem auto; padding: 2.5rem; border-radius: 12px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: opacity 0.5s;
         }
+        
         .option-button {
             display: block; width: 100%; text-align: left; padding: 1rem 1.25rem;
             margin-bottom: 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px;
             background: white; color: #374151; transition: all 0.2s; cursor: pointer;
+            font-weight: 500;
         }
-        .option-button:hover { border-color: #3b82f6; background: #f8fafc; }
-        .option-button.selected { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
-        .submit-button {
+        .option-button:hover:not(:disabled) { border-color: #3b82f6; background-color: #f0f9ff; }
+        .option-button.selected { border-color: #3b82f6; background-color: #eff6ff; color: #1d4ed8; }
+        .option-button.correct { border-color: #16a34a; background-color: #f0fdf4; color: #15803d; }
+        .option-button.incorrect { border-color: #dc2626; background-color: #fef2f2; color: #b91c1c; }
+        .option-button:disabled { cursor: not-allowed; }
+
+        .feedback {
+            margin-top: 1.5rem; padding: 1rem; border-radius: 8px;
+            border-left-width: 4px;
+        }
+        .feedback.correct { background-color: #f0fdf4; border-color: #16a34a; }
+        .feedback.incorrect { background-color: #fef2f2; border-color: #dc2626; }
+        .feedback p { margin: 0; }
+        
+        .action-button {
             background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none;
             padding: 1rem 2rem; border-radius: 8px; font-weight: 600; cursor: pointer;
-            margin: 2rem auto; display: block;
+            display: block; margin: 2rem auto 0;
+            transition: transform 0.2s;
         }
+        .action-button:hover { transform: translateY(-2px); }
+
+        .progress-bar {
+            width: 100%; background-color: #e5e7eb; border-radius: 9999px; height: 8px;
+            margin-bottom: 1rem;
+        }
+        .progress-bar-inner {
+            background-color: #3b82f6; height: 100%; border-radius: 9999px;
+            transition: width 0.3s;
+        }
+
+        .results-card { text-align: center; }
         .hidden { display: none !important; }
     </style>
 </head>
-<body>
+<body class="bg-gray-50">
+
     <div id="loading-screen" class="loading-screen">
         <div class="loading-content">
             <div class="loading-spinner"></div>
-            <h2>Newsday Quiz</h2>
-            <p>Generating today's quiz...</p>
+            <h2 class="text-2xl font-bold">Newsday Quiz</h2>
+            <p class="mt-2 text-lg">Generating today's current affairs quiz...</p>
         </div>
     </div>
+
     <div id="quiz-container" class="quiz-container hidden">
-        <header class="quiz-header">
+        <header class="quiz-header shadow-md">
             <div class="container">
-                <h1>Current Affairs Quiz</h1>
-                <p>Test your knowledge of recent UK and international news</p>
+                <h1 class="text-4xl font-bold">Current Affairs Quiz</h1>
+                <p class="mt-2 text-xl opacity-90">Test your knowledge of recent UK and international news</p>
             </div>
         </header>
-        <div id="quiz-content" class="container"></div>
+        <div id="quiz-content" class="container py-8"></div>
     </div>
+
     <script>
         class QuizApp {
             constructor() {
-                this.questions = []; this.userAnswers = {}; this.init();
+                this.questions = [];
+                this.userAnswers = [];
+                this.currentQuestionIndex = 0;
+                this.score = 0;
+
+                this.quizContentEl = document.getElementById('quiz-content');
+                this.init();
             }
+
             async init() {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                await this.loadQuizData(); this.renderQuiz(); this.showQuiz();
+                try {
+                    const response = await fetch('quiz-api.php');
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Failed to load quiz data.');
+                    }
+                    const data = await response.json();
+                    this.questions = data.quiz.questions;
+                    this.renderQuestion();
+                } catch (error) {
+                    this.displayError(error.message);
+                } finally {
+                    document.getElementById('loading-screen').classList.add('hidden');
+                    document.getElementById('quiz-container').classList.remove('hidden');
+                }
             }
-            async loadQuizData() {
-                const response = await fetch('quiz-api.php');
-                const data = await response.json();
-                this.questions = data.quiz.questions;
+            
+            displayError(message) {
+                this.quizContentEl.innerHTML = `
+                    <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-md" role="alert">
+                        <p class="font-bold">Error</p>
+                        <p>${message}</p>
+                    </div>`;
             }
-            renderQuiz() { /* Quiz rendering logic */ }
-            showQuiz() {
-                document.getElementById('loading-screen').classList.add('hidden');
-                document.getElementById('quiz-container').classList.remove('hidden');
+
+            renderQuestion() {
+                if (this.currentQuestionIndex >= this.questions.length) {
+                    this.renderResults();
+                    return;
+                }
+
+                const question = this.questions[this.currentQuestionIndex];
+                const progress = ((this.currentQuestionIndex) / this.questions.length) * 100;
+
+                this.quizContentEl.innerHTML = `
+                    <div class="question-card">
+                        <div class="progress-bar">
+                            <div class="progress-bar-inner" style="width: ${progress}%"></div>
+                        </div>
+                        <p class="text-gray-600 mb-2">Question ${this.currentQuestionIndex + 1} of ${this.questions.length}</p>
+                        <h2 class="text-2xl font-semibold mb-6 text-gray-800">${question.question}</h2>
+                        <div id="options-container">
+                            ${question.options.map((opt, index) => `
+                                <button class="option-button" data-index="${index}">${opt}</button>
+                            `).join('')}
+                        </div>
+                        <div id="feedback-container" class="mt-6"></div>
+                        <button id="next-button" class="action-button hidden">Next Question</button>
+                    </div>`;
+                
+                this.addOptionListeners();
+            }
+
+            addOptionListeners() {
+                const optionsContainer = document.getElementById('options-container');
+                optionsContainer.addEventListener('click', (event) => {
+                    const button = event.target.closest('.option-button');
+                    if (button) {
+                        this.handleAnswer(parseInt(button.dataset.index, 10));
+                    }
+                });
+            }
+
+            handleAnswer(selectedIndex) {
+                const question = this.questions[this.currentQuestionIndex];
+                const isCorrect = selectedIndex === question.correctAnswerIndex;
+                if (isCorrect) {
+                    this.score++;
+                }
+
+                const options = document.querySelectorAll('.option-button');
+                options.forEach((btn, index) => {
+                    btn.disabled = true;
+                    if (index === question.correctAnswerIndex) {
+                        btn.classList.add('correct');
+                    } else if (index === selectedIndex) {
+                        btn.classList.add('incorrect');
+                    }
+                });
+
+                const feedbackContainer = document.getElementById('feedback-container');
+                const feedbackClass = isCorrect ? 'correct' : 'incorrect';
+                
+                // Updated to make the source a clickable link if sourceUrl exists
+                const sourceInfo = question.sourceUrl
+                    ? `<a href="${question.sourceUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Source: ${question.newsSource}</a>`
+                    : `Source: ${question.newsSource}`;
+
+                feedbackContainer.innerHTML = `
+                    <div class="feedback ${feedbackClass}">
+                        <p class="font-semibold">${isCorrect ? 'Correct!' : 'Incorrect.'}</p>
+                        <p class="mt-2 text-gray-700">${question.explanation}</p>
+                        <p class="mt-2 text-sm">${sourceInfo}</p>
+                    </div>`;
+
+                document.getElementById('next-button').classList.remove('hidden');
+                document.getElementById('next-button').onclick = () => {
+                    this.currentQuestionIndex++;
+                    this.renderQuestion();
+                };
+            }
+
+            renderResults() {
+                const percentage = Math.round((this.score / this.questions.length) * 100);
+                let resultMessage = '';
+                if (percentage >= 80) resultMessage = "Excellent work! You're a news expert.";
+                else if (percentage >= 50) resultMessage = "Good job! You've got a solid grasp of current events.";
+                else resultMessage = "Keep reading! There's more to learn.";
+
+                this.quizContentEl.innerHTML = `
+                    <div class="question-card results-card">
+                        <h2 class="text-3xl font-bold text-gray-800">Quiz Complete!</h2>
+                        <p class="text-xl mt-4 text-gray-600">You scored</p>
+                        <p class="text-6xl font-bold my-4 text-blue-600">${this.score} / ${this.questions.length}</p>
+                        <p class="text-lg mt-2 font-semibold">${resultMessage}</p>
+                        <button id="restart-button" class="action-button mt-8">Try Again</button>
+                    </div>`;
+                
+                document.getElementById('restart-button').onclick = () => {
+                    window.location.reload();
+                };
             }
         }
+
         document.addEventListener('DOMContentLoaded', () => new QuizApp());
     </script>
 </body>
 </html>
+

@@ -2,8 +2,8 @@
 # Copy this file to .env and add your actual API key
 
 # Google Gemini API Key
-# Get your API key from: https://makersuite.google.com/app/apikey
-GEMINI_API_KEY= API KEY HERE
+# Get your API key from: https://aistudio.google.com/app/apikey
+GEMINI_API_KEY= ****PUT YOUR API KEY HERE****
 
 # Application Configuration
 APP_NAME="Current Affairs Quiz"
