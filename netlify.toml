@@ -1,6 +1,0 @@
-# This configuration file tells Netlify where to find the serverless functions
-# for your project. When Netlify builds the site, it will look inside the
-# "netlify/functions/" directory and deploy any valid .js files it finds.
-
-[functions]
-  directory = "netlify/functions/"
