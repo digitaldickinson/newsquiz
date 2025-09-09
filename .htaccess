@@ -1,0 +1,27 @@
+# .htaccess file for Current Affairs Quiz Application
+
+# Security: Hide sensitive files
+<FilesMatch "^\.env$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect cache directory
+<DirectoryMatch "^.*/cache/">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set X-Frame-Options SAMEORIGIN
+</IfModule>
+
+# Compression for better performance
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE text/html
+</IfModule>
