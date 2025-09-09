@@ -1,6 +1,8 @@
 # Current Affairs Quiz
 This PHP-based application automatically generates a 20-question news quiz twice a day, complete with clickable links to the source articles. It uses Google's Gemini AI to fetch and formulate questions based on the last three days of news, providing a zero-maintenance tool for journalism education.
 
+The quiz is designed to update twice a day. An AM and PM version. This saves on API calls to GEMINIAI. The first person to access the quiz triggers the generation of a question set.  Everyone else uses that until the afternoon version. 
+
 ## Quick Setup (15 minutes)
 
 1. **Get Google Gemini API Key**
@@ -33,7 +35,7 @@ This PHP-based application automatically generates a 20-question news quiz twice
 - Check the prompt and adjust as required - It's currently set to favour Manchester and Greater Manchester in the question selection
 
 ## Features:
-- Twice-daily quiz generation (AM/PM)
+- Twice-daily quiz generation (AM/PM) to minimise API calls.
 - 20 current affairs questions
 - Mobile-responsive design  
 - Color-coded results with explanations
